@@ -35,7 +35,7 @@ table_admin_boundary <- table_admin_boundary |>
 table_admin_boundary |>
   mutate(list(pref_name, year, url) |>
            pmap(\(pref_name, year, url) {
-             exdir <- path("data-raw/admin_boundary", year, pref_name)
+             exdir <- path("data-raw/admin_boundary/year", year, pref_name)
              dir_create(exdir)
 
              file <- dir_ls(exdir,
@@ -53,7 +53,7 @@ table_admin_boundary |>
 JGD2000 <- 4612
 JGD2011 <- 6668
 
-dir_ls("data-raw/admin_boundary/",
+dir_ls("data-raw/admin_boundary/year",
        type = "directory") |>
   walk(\(dir) {
     inform(dir)
@@ -88,7 +88,7 @@ dir_ls("data-raw/admin_boundary/",
                   .groups = "drop")
 
       admin_boundary <- admin_boundary |>
-        rmapshaper::ms_simplify(keep = 1e7 / as.double(lobstr::obj_size(admin_boundary)),
+        rmapshaper::ms_simplify(keep = 5e6 / as.double(lobstr::obj_size(admin_boundary)),
                                 sys = TRUE)
 
       write_sf(admin_boundary, file)
@@ -96,7 +96,7 @@ dir_ls("data-raw/admin_boundary/",
     }
   })
 
-file_admin_boundary <- tibble(file = dir_ls("data-raw/admin_boundary/",
+file_admin_boundary <- tibble(file = dir_ls("data-raw/admin_boundary/year",
                                             regexp = "gpkg$"),
                               year = file |>
                                 str_extract("\\d{4}(?=\\.gpkg$)") |>
@@ -106,34 +106,34 @@ for (file in vec_chop(file_admin_boundary)) {
   year <- file$year
   cli::cli_inform("Year: {year}")
 
-  if (!exists("data_admin_boundary")) {
-    data_admin_boundary <- read_sf(file$file) |>
+  if (!exists("admin_boundary_data")) {
+    admin_boundary <- read_sf(file$file) |>
       rowid_to_column("id")
-    data_admin_boundary <- list(data = list(data_admin_boundary |>
-                                              st_drop_geometry() |>
-                                              relocate(!id)) |>
-                                  set_names(year),
-                                geom = data_admin_boundary |>
-                                  select(id) |>
-                                  mutate(area = st_area(geom) |>
-                                           units::set_units(km^2)))
-  } else if (!year %in% names(data_admin_boundary$data)) {
-    data_admin_boundary_new <- read_sf(file$file) |>
+    admin_boundary_data <- list(admin_boundary |>
+                                  st_drop_geometry() |>
+                                  relocate(!id)) |>
+      set_names(year)
+    admin_boundary_geom <- admin_boundary |>
+      select(id) |>
+      mutate(area = st_area(geom) |>
+               units::set_units(km^2))
+  } else if (!year %in% names(admin_boundary_data)) {
+    admin_boundary_new <- read_sf(file$file) |>
       rowid_to_column("id_new") |>
       mutate(area = st_area(geom) |>
                units::set_units(km^2))
-    id <- data_admin_boundary_new |>
+    id <- admin_boundary_new |>
       select(id_new, area) |>
       rename(geom_new = geom,
              area_new = area) |>
-      quietly(st_join)(data_admin_boundary$geom,
+      quietly(st_join)(admin_boundary_geom,
                        left = FALSE) |>
       pluck("result") |>
       filter(near(area_new, area,
                   tol = units::set_units(1e-2, km^2))) |>
       select(!c(area_new, area)) |>
       as_tibble() |>
-      left_join(data_admin_boundary$geom |>
+      left_join(admin_boundary_geom |>
                   select(id) |>
                   as_tibble(),
                 by = join_by(id)) |>
@@ -145,21 +145,21 @@ for (file in vec_chop(file_admin_boundary)) {
       slice_min(distance, n = 1L) |>
       select(!distance)
 
-    data_admin_boundary_new <- data_admin_boundary_new |>
+    admin_boundary_new <- admin_boundary_new |>
       left_join(id,
                 by = join_by(id_new)) |>
       select(!id_new)
-    loc <- is.na(data_admin_boundary_new$id)
-    vec_slice(data_admin_boundary_new$id, loc) <- vec_size(data_admin_boundary$geom) + seq_len(sum(loc))
+    loc <- is.na(admin_boundary_new$id)
+    vec_slice(admin_boundary_new$id, loc) <- vec_size(admin_boundary_geom) + seq_len(sum(loc))
 
-    data_admin_boundary$data[[as.character(year)]] <- data_admin_boundary_new |>
+    admin_boundary_data[[as.character(year)]] <- admin_boundary_new |>
       st_drop_geometry() |>
       select(!area)
-    data_admin_boundary$geom <- bind_rows(data_admin_boundary$geom,
-                                          vec_slice(data_admin_boundary_new, loc) |>
-                                            select(id, area))
+    admin_boundary_geom <- bind_rows(admin_boundary_geom,
+                                     vec_slice(admin_boundary_new, loc) |>
+                                       select(id, area))
   }
 }
 
-usethis::use_data(data_admin_boundary,
+usethis::use_data(admin_boundary_data, admin_boundary_geom,
                   overwrite = TRUE)
