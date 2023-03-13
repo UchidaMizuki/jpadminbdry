@@ -161,5 +161,8 @@ for (file in vec_chop(file_admin_boundary)) {
   }
 }
 
-usethis::use_data(admin_boundary_data, admin_boundary_geom,
-                  overwrite = TRUE)
+write_rds(admin_boundary_data, "data-raw/admin_boundary/data.rds")
+write_rds(admin_boundary_geom, "data-raw/admin_boundary/geom.rds")
+
+# usethis::use_data(admin_boundary_data, admin_boundary_geom,
+#                   overwrite = TRUE)
