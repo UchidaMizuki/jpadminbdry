@@ -11,7 +11,9 @@ Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3
 Imports: 
+    dplyr,
     rlang,
+    sf,
     vctrs
 Depends: 
     R (>= 2.10)
